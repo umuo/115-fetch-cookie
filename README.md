@@ -25,7 +25,7 @@ const PROXY_URL = 'https://my-115-proxy.your-username.workers.dev/?target=';
 ```
 11. 修改`worker_index.js`中的 `ALLOWED_ORIGINS`：
 - 如果您在本地测试：代码中默认包含了 'null' (用于 file:// 协议) 和对 http://localhost 的支持，您无需修改。
-- 如果您部署到线上：假设您将 index.html 部署到了 Vercel，地址是 https://my-115-login.vercel.app。您需要将 ALLOWED_ORIGINS 数组修改为：
+- 如果您部署到线上：假设您将 index.html 部署到了 Vercel，地址是 https://my-115-login.vercel.app。您需要将 `ALLOWED_ORIGINS` 数组修改为：
 ```JavaScript
 const ALLOWED_ORIGINS = [
   'https://my-115-login.vercel.app',
