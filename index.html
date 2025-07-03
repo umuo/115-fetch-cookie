@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>115 扫码获取 Cookie</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.6; padding: 20px; max-width: 600px; margin: auto; background-color: #f4f4f4; }
+        h1 { text-align: center; color: #333; }
+        .container { background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        select, button { width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #ddd; box-sizing: border-box; }
+        button { background-color: #007bff; color: white; border: none; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #qrcode-container { display: flex; justify-content: center; align-items: center; margin: 20px 0; min-height: 200px; }
+        #status { text-align: center; font-size: 1.1em; color: #555; height: 30px; }
+        #result-container { margin-top: 20px; }
+        textarea { width: 100%; height: 120px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-family: monospace; }
+        .warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 10px; border-radius: 4px; margin-bottom: 20px;}
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        <h1>115 扫码获取 Cookie</h1>
+        
+        <div class="warning">
+            <strong>注意:</strong> 由于浏览器安全策略 (CORS)，此页面很可能无法直接请求 115 API。如果卡在“正在获取二维码...”或控制台出现 CORS 错误，您需要一个代理服务器来中转请求。
+        </div>
+
+        <div class="form-group">
+            <label for="app-select">选择 App 类型:</label>
+            <select id="app-select">
+                <option value="web" selected>Web</option>
+                <option value="android">Android</option>
+                <option value="ios">iOS</option>
+                <option value="linux">Linux</option>
+                <option value="mac">Mac</option>
+                <option value="windows">Windows</option>
+                <option value="tv">TV</option>
+                <option value="alipaymini">支付宝小程序</option>
+                <option value="wechatmini">微信小程序</option>
+                <option value="qandroid">QAndroid</option>
+            </select>
+        </div>
+        
+        <button id="start-btn">开始登录</button>
+
+        <div id="status">请点击开始登录</div>
+        <div id="qrcode-container"></div>
+
+        <div id="result-container" style="display: none;">
+            <label for="cookie-result">成功！Cookie 如下:</label>
+            <textarea id="cookie-result" readonly></textarea>
+        </div>
+    </div>
+
+    <script>
+        // !! 关键 !!
+        // 如果您部署了代理服务器, 请将 PROXY_URL 修改为您的代理地址
+        // 例如: 'https://your-proxy.vercel.app/api?target='
+        // 如果留空, 将尝试直接请求, 大概率会因 CORS 失败
+        const PROXY_URL = ''; // 例如: 'https://my-115-proxy.workers.dev/?target='
+
+        const startBtn = document.getElementById('start-btn');
+        const appSelect = document.getElementById('app-select');
+        const statusDiv = document.getElementById('status');
+        const qrcodeContainer = document.getElementById('qrcode-container');
+        const resultContainer = document.getElementById('result-container');
+        const cookieResultText = document.getElementById('cookie-result');
+        let qrcodeInstance = null;
+
+        // 封装 fetch 请求
+        async function apiRequest(url, options = {}) {
+            const targetUrl = PROXY_URL ? `${PROXY_URL}${encodeURIComponent(url)}` : url;
+            const response = await fetch(targetUrl, options);
+            if (!response.ok) {
+                throw new Error(`HTTP 错误! 状态: ${response.status}`);
+            }
+            return response.json();
+        }
+
+        async function getQrcodeToken() {
+            return apiRequest('https://qrcodeapi.115.com/api/1.0/web/1.0/token/');
+        }
+
+        async function getQrcodeStatus(payload) {
+            const params = new URLSearchParams(payload).toString();
+            return apiRequest(`https://qrcodeapi.115.com/get/status/?${params}`);
+        }
+
+        async function postQrcodeResult(uid, app) {
+            const apiUrl = `https://passportapi.115.com/app/1.0/${app}/1.0/login/qrcode/`;
+            const payload = new URLSearchParams({ app, account: uid });
+
+            return apiRequest(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: payload
+            });
+        }
+        
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        startBtn.addEventListener('click', async () => {
+            startBtn.disabled = true;
+            statusDiv.textContent = '正在获取二维码...';
+            qrcodeContainer.innerHTML = '';
+            resultContainer.style.display = 'none';
+
+            try {
+                const tokenResult = await getQrcodeToken();
+                if (!tokenResult || !tokenResult.data || !tokenResult.data.qrcode) {
+                    throw new Error('获取二维码 token 失败');
+                }
+                
+                const qrcodeToken = tokenResult.data;
+                const qrcodeData = qrcodeToken.qrcode;
+                delete qrcodeToken.qrcode;
+
+                // 生成二维码
+                if (qrcodeInstance) {
+                    qrcodeInstance.makeCode(qrcodeData);
+                } else {
+                    qrcodeInstance = new QRCode(qrcodeContainer, {
+                        text: qrcodeData,
+                        width: 200,
+                        height: 200,
+                        correctLevel: QRCode.CorrectLevel.H
+                    });
+                }
+                
+                // 轮询状态
+                while (true) {
+                    await delay(2000); // 每2秒查询一次
+                    const statusResult = await getQrcodeStatus(qrcodeToken);
+                    const status = statusResult?.data?.status;
+
+                    switch (status) {
+                        case 0:
+                            statusDiv.textContent = '[状态=0] 等待扫描...';
+                            break;
+                        case 1:
+                            statusDiv.textContent = '[状态=1] 已扫描, 等待确认...';
+                            break;
+                        case 2:
+                            statusDiv.textContent = '[状态=2] 已确认登录!';
+                            const app = appSelect.value;
+                            const finalResult = await postQrcodeResult(qrcodeToken.uid, app);
+
+                            if (finalResult?.data?.cookie) {
+                                const cookieString = Object.entries(finalResult.data.cookie)
+                                    .map(([key, value]) => `${key}=${value}`)
+                                    .join('; ');
+                                cookieResultText.value = cookieString;
+                                resultContainer.style.display = 'block';
+                                statusDiv.textContent = '登录成功!';
+                            } else {
+                                throw new Error('获取 Cookie 失败');
+                            }
+                            startBtn.disabled = false;
+                            return; // 结束轮询
+                        case -1:
+                            throw new Error('二维码已过期');
+                        case -2:
+                            throw new Error('已取消登录');
+                    }
+                }
+            } catch (error) {
+                statusDiv.textContent = `错误: ${error.message}`;
+                console.error(error);
+                startBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
