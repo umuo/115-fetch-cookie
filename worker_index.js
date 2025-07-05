@@ -23,6 +23,7 @@ const ALLOWED_ORIGINS = [
   
   // 用于在本地电脑上直接打开 HTML 文件进行测试 (file://)
   'null',
+  'https://115.lacknb.cn',
 
   // 用于本地开发服务器, 例如 Vite 或 a live-server
   // 如果你的本地服务器是 http://localhost:3000, 则应写 'http://localhost:3000'
